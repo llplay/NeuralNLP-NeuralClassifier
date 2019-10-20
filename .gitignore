@@ -1,0 +1,7 @@
+.idea/
+__pycache__/
+checkpoint_dir_rcv1/
+data/domain
+dict_rcv1/
+log_test_rcv1_hierar
+probs.txt
