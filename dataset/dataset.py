@@ -66,11 +66,11 @@ class DatasetBase(torch.utils.data.dataset.Dataset):
         self._init_dict()
         self.sample_index = []
         self.sample_size = 0
-        self.mode = mode
+        self.model_mode = mode
 
         self.files = json_files
         for i, json_file in enumerate(json_files):
-            with open(json_file) as fin:
+            with open(json_file, encoding="utf-8") as fin:
                 self.sample_index.append([i, 0])
                 while True:
                     json_str = fin.readline()
@@ -82,12 +82,12 @@ class DatasetBase(torch.utils.data.dataset.Dataset):
 
         def _insert_vocab(files, _mode=InsertVocabMode.ALL):
             for _i, _json_file in enumerate(files):
-                with open(_json_file) as _fin:
+                with open(_json_file, encoding="utf-8") as _fin:
                     for _json_str in _fin:
                         try:
                             self._insert_vocab(json.loads(_json_str), mode)
-                        except:
-                            print(_json_str)
+                        except Exception as e:
+                            print(_json_str, e.args)
 
         # Dict can be generated using:
         # json files or/and pretrained embedding
@@ -126,7 +126,7 @@ class DatasetBase(torch.utils.data.dataset.Dataset):
         if idx >= self.sample_size:
             raise IndexError
         index = self.sample_index[idx]
-        with open(self.files[index[0]]) as fin:
+        with open(self.files[index[0]], encoding="utf-8") as fin:
             fin.seek(index[1])
             json_str = fin.readline()
         return self._get_vocab_id_list(json.loads(json_str))
@@ -148,7 +148,7 @@ class DatasetBase(torch.utils.data.dataset.Dataset):
                 self._save_dict(name)
         else:
             dict_idx = self.dict_names.index(dict_name)
-            dict_file = open(self.dict_files[dict_idx], "w")
+            dict_file = open(self.dict_files[dict_idx], "w", encoding="utf-8")
             id_to_vocab_dict_map = self.id_to_vocab_dict_list[dict_idx]
             index = 0
             for vocab, count in self.count_list[dict_idx]:
@@ -183,7 +183,7 @@ class DatasetBase(torch.utils.data.dataset.Dataset):
                     id_to_vocab_dict_map[1] = self.VOCAB_UNKNOWN
                     id_to_vocab_dict_map[2] = self.VOCAB_PADDING_LEARNABLE
 
-                for line in open(self.dict_files[dict_idx], "r"):
+                for line in open(self.dict_files[dict_idx], "r", encoding="utf-8"):
                     vocab = line.strip("\n").split("\t")
                     dict_idx = len(dict_map)
                     dict_map[vocab[0]] = dict_idx

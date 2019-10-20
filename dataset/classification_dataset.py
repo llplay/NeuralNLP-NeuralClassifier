@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 """
 Tencent is pleased to support the open source community by making NeuralClassifier available.
 Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
@@ -12,10 +12,10 @@ or implied. See the License for thespecific language governing permissions and l
 the License.
 """
 
-
 from dataset.dataset import DatasetBase
 from dataset.dataset import InsertVocabMode
 from util import ModeType
+import json
 
 
 class ClassificationDataset(DatasetBase):
@@ -127,6 +127,18 @@ class ClassificationDataset(DatasetBase):
             [self.config.feature.min_token_count,
              self.config.feature.min_keyword_count]
 
+    def save_dict(self):
+        dict_dir = self.config.data.dict_dir + "/" + "dm.dict"
+        with open(dict_dir, "w", encoding="utf-8") as f:
+            json.dump({
+                "id_to_label_map": self.id_to_label_map,
+                "id_to_token_map": self.id_to_token_map,
+                "id_to_char_map": self.id_to_char_map,
+                "id_to_token_gram_map": self.id_to_token_gram_map,
+                "id_to_keyword_map": self.id_to_keyword_map,
+                "id_to_topic_map": self.id_to_topic_map
+            }, f, ensure_ascii=False, indent=4)
+
     def _insert_vocab(self, json_obj, mode=InsertVocabMode.ALL):
         """Insert vocab to dict
         """
@@ -160,10 +172,12 @@ class ClassificationDataset(DatasetBase):
                               self.token_ngram_map,
                               self.config.feature.max_char_len,
                               self.config.feature.max_char_len_per_token)
-        return {self.DOC_LABEL: self._label_to_id(doc_labels, self.label_map),
-                self.DOC_TOKEN: token_ids, self.DOC_CHAR: char_ids,
-                self.DOC_CHAR_IN_TOKEN: char_in_token_ids,
-                self.DOC_TOKEN_NGRAM: token_ngram_ids,
-                self.DOC_KEYWORD:
-                    self._vocab_to_id(doc_keywords, self.keyword_map),
-                self.DOC_TOPIC: self._vocab_to_id(doc_topics, self.topic_map)}
+        return {
+            self.DOC_LABEL: self._label_to_id(doc_labels, self.label_map) if self.model_mode != ModeType.PREDICT else [
+                0],
+            self.DOC_TOKEN: token_ids, self.DOC_CHAR: char_ids,
+            self.DOC_CHAR_IN_TOKEN: char_in_token_ids,
+            self.DOC_TOKEN_NGRAM: token_ngram_ids,
+            self.DOC_KEYWORD:
+                self._vocab_to_id(doc_keywords, self.keyword_map),
+            self.DOC_TOPIC: self._vocab_to_id(doc_topics, self.topic_map)}

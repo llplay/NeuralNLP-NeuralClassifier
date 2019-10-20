@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 """
 Tencent is pleased to support the open source community by making NeuralClassifier available.
 Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
@@ -16,12 +16,14 @@ import os
 import shutil
 import sys
 import time
+import json
 
 import torch
 from torch.utils.data import DataLoader
 
 import util
 from config import Config
+from dataset.dataset import DatasetBase
 from dataset.classification_dataset import ClassificationDataset
 from dataset.collator import ClassificationCollator
 from dataset.collator import FastTextCollator
@@ -41,7 +43,6 @@ from model.classification.region_embedding import RegionEmbedding
 from model.loss import ClassificationLoss
 from model.model_util import get_optimizer, get_hierar_relations
 from util import ModeType
-
 
 ClassificationDataset, ClassificationCollator, FastTextCollator, ClassificationLoss, cEvaluator
 FastText, TextCNN, TextRNN, TextRCNN, DRNN, TextVDCNN, Transformer, DPCNN, AttentiveConvNet, RegionEmbedding
@@ -92,7 +93,7 @@ class ClassificationTrainer(object):
         self.loss_fn = loss_fn
         if self.conf.task_info.hierarchical:
             self.hierar_relations = get_hierar_relations(
-                    self.conf.task_info.hierar_taxonomy, label_map)
+                self.conf.task_info.hierar_taxonomy, label_map)
 
     def train(self, data_loader, model, optimizer, stage, epoch):
         model.update_lr(optimizer, epoch)
@@ -130,7 +131,9 @@ class ClassificationTrainer(object):
             else:  # flat classification
                 loss = self.loss_fn(
                     logits,
-                    batch[ClassificationDataset.DOC_LABEL].to(self.conf.device))
+                    batch[ClassificationDataset.DOC_LABEL].to(self.conf.device),
+                    False,
+                    is_multi)
             if mode == ModeType.TRAIN:
                 optimizer.zero_grad()
                 loss.backward()
@@ -163,7 +166,7 @@ class ClassificationTrainer(object):
                     fscore_list[0][cEvaluator.MACRO_AVERAGE],
                     right_list[0][cEvaluator.MICRO_AVERAGE],
                     predict_list[0][cEvaluator.MICRO_AVERAGE],
-                        standard_list[0][cEvaluator.MICRO_AVERAGE], total_loss))
+                    standard_list[0][cEvaluator.MICRO_AVERAGE], total_loss))
             return fscore_list[0][cEvaluator.MICRO_AVERAGE]
 
 
@@ -193,6 +196,7 @@ def train(conf):
     train_data_loader, validate_data_loader, test_data_loader = \
         get_data_loader(dataset_name, collate_name, conf)
     empty_dataset = globals()[dataset_name](conf, [])
+    empty_dataset.save_dict()
     model = get_classification_model(model_name, empty_dataset, conf)
     loss_fn = globals()["ClassificationLoss"](
         label_size=len(empty_dataset.label_map), loss_type=conf.train.loss_type)
@@ -233,6 +237,51 @@ def train(conf):
     load_checkpoint(model_file_prefix + "_" + str(best_epoch), conf, model,
                     optimizer)
     trainer.eval(test_data_loader, model, optimizer, "Best test", best_epoch)
+    torch.save(model, "checkpoint_dir_rcv1/best_model.pt")
+
+
+def predict_single(text):
+    model = torch.load('checkpoint_dir_rcv1/best_model.pt')
+    with open("dict_rcv1/dm.dict", encoding="utf-8") as f:
+        vocab_dict = json.load(f)
+    id_to_label_map = vocab_dict["id_to_label_map"]
+    id_to_token_map = vocab_dict["id_to_token_map"]
+    token_to_id_map = {v: k for k, v in id_to_token_map.items()}
+    text = [int(token_to_id_map.get(i, DatasetBase.VOCAB_UNKNOWN)) for i in text]
+    text = torch.tensor(text)
+    text = text.unsqueeze(0)
+    output = model({"doc_token": text})
+    # out = torch.max(output, 1)
+    # print(output.argmax(1).item())
+    result = output.argmax(1).item()
+    print(id_to_label_map[str(result)])
+    return output.argmax(1).item()
+
+
+def predict_batch():
+    model = torch.load('checkpoint_dir_rcv1/best_model.pt')
+    with open("dict_rcv1/dm.dict", encoding="utf-8") as f:
+        vocab_dict = json.load(f)
+    id_to_label_map = vocab_dict["id_to_label_map"]
+    id_to_token_map = vocab_dict["id_to_token_map"]
+    token_to_id_map = {v: k for k, v in id_to_token_map.items()}
+    total = 0
+    wrong = 0
+    for line in open("data/dm_train.json", encoding="utf-8"):
+        line = json.loads(line)
+        text = line["doc_token"]
+        dm = line["doc_label"]
+        origin_text = text
+        text = [int(token_to_id_map.get(i, DatasetBase.VOCAB_UNKNOWN)) for i in text]
+        text = torch.tensor(text)
+        text = text.unsqueeze(0)
+        output = model({"doc_token": text, "doc_token_len": torch.tensor([len(origin_text)])})
+        result = output.argmax(1).item()
+        print("".join(origin_text), "origin:" + dm[0], "predict:" + id_to_label_map[str(result)],
+              "result:", dm[0] == id_to_label_map[str(result)])
+        total += 1
+        wrong = wrong + 1 if not dm[0] == id_to_label_map[str(result)] else wrong
+    print("wrong:{}, total:{}, result:{}".format(wrong, total, (total - wrong) / total))
 
 
 if __name__ == '__main__':
@@ -240,4 +289,6 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = str(config.train.visible_device_list)
     torch.manual_seed(2019)
     torch.cuda.manual_seed(2019)
-    train(config)
+    # train(config)
+    # predict_single("声音调最大")
+    predict_batch()
